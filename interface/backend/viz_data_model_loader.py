@@ -35,7 +35,7 @@ def load_concat_data():
     xsum_data_raw = datasets.load_dataset("xsum")
     xsum_data_raw_cc = datasets.concatenate_datasets(
         [xsum_data_raw["train"], xsum_data_raw["validation"], xsum_data_raw["test"]]
-        )
+    )
     xsum_concat_data = XsumDataset(xsum_data_raw_cc)
     # view_dataset = {
     #     k: prepare_data_for_view(v)
@@ -45,6 +45,7 @@ def load_concat_data():
     # return view_dataset
     view_data = xsum_concat_data.data_by_id
     return view_data
+
 
 @st.experimental_memo
 def load_model_and_tokenizer(model_name):

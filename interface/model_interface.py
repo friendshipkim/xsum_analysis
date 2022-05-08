@@ -1,7 +1,9 @@
 import streamlit as st
+
 # from analysis import storage
 from backend.viz_data_model_loader import load_concat_data, load_model_and_tokenizer
 from generate_xsum_summary_from_input import generate_summaries
+
 # import pandas as pd
 
 # cache_summaries = storage.get_summaries("xsum", "facebook-bart-large-xsum")
@@ -25,9 +27,7 @@ def render_model_interface():
 
     # Select/Input source document
     selected_id = str(
-        st.selectbox(
-            "Select entry by bbcid", options=concat_xsum_data.keys()
-        )
+        st.selectbox("Select entry by bbcid", options=concat_xsum_data.keys())
     )
     selected_data = concat_xsum_data[selected_id]
     document = selected_data["document"]
@@ -37,7 +37,7 @@ def render_model_interface():
 
     # Perturbed Document
     st.header("Perturbed Document")
-    ptb_document = st.text_area("Input:", height=500).replace('\n\n', '\n')
+    ptb_document = st.text_area("Input:", height=500).replace("\n\n", "\n")
     # for terminal
     # .replace('\\n', '\n').replace("\\", "")
     # st.write("* Perturbed doc == origianl doc?:", ptb_document == document)
@@ -59,10 +59,11 @@ def render_model_interface():
         tokenizer=tokenizer,
         docs_to_summarize=[document],
         num_beams=4,
-        return_generation_metadata=True)
+        return_generation_metadata=True,
+    )
     st.write(gen_summary[0])
     # st.write(gen_metadata)
-    
+
     # Generated Summary from Perturbed Document
     st.subheader("Generated Summary from Perturbed Document")
     ptb_summary, ptb_metadata = generate_summaries(
@@ -70,7 +71,8 @@ def render_model_interface():
         tokenizer=tokenizer,
         docs_to_summarize=[ptb_document],
         num_beams=4,
-        return_generation_metadata=True)
+        return_generation_metadata=True,
+    )
     st.write(ptb_summary[0])
     # st.write(ptb_metadata)
 
@@ -78,7 +80,7 @@ def render_model_interface():
     st.header("Comparison")
     st.write("* Perturbed document == original document?:", ptb_document == document)
     st.write("* Perturbed summary == generated summary?:", ptb_summary == gen_summary)
-    
+
     # # Output summarization
     # predicted_summary = cache_summaries[selected_id]["summary"][0]
     # st.subheader("Predicted Summary")

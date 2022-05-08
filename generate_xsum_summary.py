@@ -4,15 +4,16 @@ import datasets
 from typing import List, Tuple, Dict
 from utils import entropy
 from xsum_dataset import XsumDataset
+
 # from sumtool.storage import store_model_summaries
 from transformers import BartTokenizer, BartForConditionalGeneration
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
-def load_summarization_model_and_tokenizer(model_name: str) -> Tuple[
-    BartForConditionalGeneration, BartTokenizer
-]:
+def load_summarization_model_and_tokenizer(
+    model_name: str,
+) -> Tuple[BartForConditionalGeneration, BartTokenizer]:
     """
     Load summary generation model and move to GPU, if possible.
     Returns:
@@ -30,7 +31,7 @@ def generate_summaries(
     tokenizer: BartTokenizer,
     docs_to_summarize: List[str],
     num_beams: int = 4,
-    return_generation_metadata: bool = False
+    return_generation_metadata: bool = False,
 ):
     """
     Given a trained summary generation model and appropriate tokenizer,
@@ -75,43 +76,55 @@ def generate_summaries(
         return generated_summaries
     else:
         token_metadata = []
-        # bug? - we should check if the token is in **each** input document 
+        # bug? - we should check if the token is in **each** input document
         # input_set = input_token_ids.view(-1).tolist()  # this is flattened token ids
         for seq_idx in range(model_output.sequences.shape[0]):
             seq_metadata = []
             token_metadata.append(seq_metadata)
 
-            for idx, output_token_id in enumerate(model_output.sequences[seq_idx][1:]):  # from the second token
+            # save metadata from the second token
+            for idx, output_token_id in enumerate(model_output.sequences[seq_idx][1:]):
                 beam_idx = model_output.beam_indices[seq_idx][idx]
-                selected_beam_probs = torch.exp(model_output.scores[idx][beam_idx])  # get prob distn from score
+
+                # get prob distn from score
+                selected_beam_probs = torch.exp(model_output.scores[idx][beam_idx])
 
                 # top alternatives during beam search
                 beam_top_alternatives = []
                 top_probs = torch.topk(selected_beam_probs, k=3)
                 for i, v in zip(top_probs.indices, top_probs.values):
-                    beam_top_alternatives.append({
-                        "token": tokenizer.decode(i),
-                        "token_id": i.item(),
-                        "beam_token_prob": v.item()
-                    })
+                    beam_top_alternatives.append(
+                        {
+                            "token": tokenizer.decode(i),
+                            "token_id": i.item(),
+                            "beam_token_prob": v.item(),
+                        }
+                    )
 
-                seq_metadata.append({
-                    "token_id": output_token_id,
-                    "token": tokenizer.decode(output_token_id),
-                    "entropy": entropy(selected_beam_probs),  # entropy of the selected token
-                    "beam_token_prob": selected_beam_probs[output_token_id].item(),  # prob of the selected token
-                    "beam_idx": beam_idx.item(),  # beam index of the selected token
-                    "beam_top_probs": beam_top_alternatives,  # token, token_id, prob of top K alternatives
-                    "token_in_input": output_token_id in input_token_ids[seq_idx],  # is the selected token in its document? - use for overlap
-                    # bug?
-                    # "token_in_input": output_token_id in input_set
-                })
+                seq_metadata.append(
+                    {
+                        "token_id": output_token_id,
+                        "token": tokenizer.decode(output_token_id),
+                        "entropy": entropy(
+                            selected_beam_probs
+                        ),  # entropy of the selected token
+                        "beam_token_prob": selected_beam_probs[
+                            output_token_id
+                        ].item(),  # prob of the selected token
+                        "beam_idx": beam_idx.item(),  # beam index of the selected token
+                        "beam_top_probs": beam_top_alternatives,  # token, token_id, prob of top K alternatives
+                        "token_in_input": output_token_id in input_token_ids[seq_idx],
+                        # # is the selected token in its document? (maybe used for overlap)
+                        # original - "token_in_input": output_token_id in input_set, bug?
+                    }
+                )
 
         return generated_summaries, token_metadata
 
+
 def generate_token_entropy_metadata(
-    bbc_ids: List[str], 
-    seq_metadata: List[dict]) -> Dict[str, Dict]:
+    bbc_ids: List[str], seq_metadata: List[dict]
+) -> Dict[str, Dict]:
     """
     Given a list of bbcids and sequence metadata generated from `generate_summaries`,
     generate token-entropy metadata
@@ -122,21 +135,21 @@ def generate_token_entropy_metadata(
         token_entropy_metadata: dict of {bbcid: tokens_with_entropy},
                                 tokens_with_entropy is a list of tuples (token, entropy)
     """
-    assert len(bbc_ids) == len(seq_metadata), "the number of selected data doesn't match"
+    assert len(bbc_ids) == len(
+        seq_metadata
+    ), "the number of selected data doesn't match"
     token_entropy_metadata = {}
 
     for bbc_id, seq_metadata in zip(bbc_ids, seq_metadata):
         tokens_with_entropy = []
         for token_metadata in seq_metadata:
-            tokens_with_entropy.append((
-                token_metadata["token"],
-                token_metadata["entropy"]
-            ))
+            tokens_with_entropy.append(
+                (token_metadata["token"], token_metadata["entropy"])
+            )
 
-        token_entropy_metadata[bbc_id] = {
-            "tokens_with_entropy": tokens_with_entropy
-        }
+        token_entropy_metadata[bbc_id] = {"tokens_with_entropy": tokens_with_entropy}
     return token_entropy_metadata
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
@@ -169,9 +182,9 @@ if __name__ == "__main__":
     xsum_data_raw = datasets.load_dataset("xsum")
     xsum_data_raw_cc = datasets.concatenate_datasets(
         [xsum_data_raw["train"], xsum_data_raw["validation"], xsum_data_raw["test"]]
-        )
+    )
     xsum_concat_data = XsumDataset(xsum_data_raw_cc)
-    
+
     # select data
     bbc_ids = [id.strip() for id in args.bbc_ids.split(",")]
     selected_data = [xsum_concat_data.data_by_id[bbc_id] for bbc_id in bbc_ids]
@@ -179,18 +192,16 @@ if __name__ == "__main__":
 
     # generate summary
     gen_summaries, gen_metadata = generate_summaries(
-        model,
-        tokenizer,
-        original_docs,
-        num_beams=4,
-        return_generation_metadata=True
+        model, tokenizer, original_docs, num_beams=4, return_generation_metadata=True
     )
 
     # generate summary metadata
     summary_metadata = generate_token_entropy_metadata(bbc_ids, gen_metadata)
 
     # print (documents) / summaries / (metadata)
-    for source, gen_summary, gen_metadatum in zip(selected_data, gen_summaries, gen_metadata):
+    for source, gen_summary, gen_metadatum in zip(
+        selected_data, gen_summaries, gen_metadata
+    ):
         print("XSUM ID", source["id"])
         # print("* INPUT DOCUMENT:", source["document"])
         print("* GROUND TRUTH SUMMARY:", source["true_summary"])
