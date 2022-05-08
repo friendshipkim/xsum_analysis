@@ -1,7 +1,7 @@
 import argparse
 import torch
 import datasets
-from typing import List, Tuple
+from typing import List, Tuple, Dict
 from utils import entropy
 from xsum_dataset import XsumDataset
 # from sumtool.storage import store_model_summaries
@@ -10,7 +10,7 @@ from transformers import BartTokenizer, BartForConditionalGeneration
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
-def load_summarization_model_and_tokenizer() -> Tuple[
+def load_summarization_model_and_tokenizer(model_name: str) -> Tuple[
     BartForConditionalGeneration, BartTokenizer
 ]:
     """
@@ -18,8 +18,8 @@ def load_summarization_model_and_tokenizer() -> Tuple[
     Returns:
         (model, tokenizer)
     """
-    tokenizer = BartTokenizer.from_pretrained("facebook/bart-large-xsum")
-    model = BartForConditionalGeneration.from_pretrained("facebook/bart-large-xsum")
+    tokenizer = BartTokenizer.from_pretrained(model_name)
+    model = BartForConditionalGeneration.from_pretrained(model_name)
     model.to(device)
 
     return model, tokenizer
@@ -48,7 +48,7 @@ def generate_summaries(
     """
     inputs = tokenizer(
         docs_to_summarize,
-        max_length=1024,
+        # max_length=1024,  # default is 1024 for 'facebook/bart-large-xsum'
         truncation=True,
         return_tensors="pt",
         padding=True,
@@ -75,14 +75,17 @@ def generate_summaries(
         return generated_summaries
     else:
         token_metadata = []
-        input_set = input_token_ids.view(-1).tolist()
+        # bug? - we should check if the token is in **each** input document 
+        # input_set = input_token_ids.view(-1).tolist()  # this is flattened token ids
         for seq_idx in range(model_output.sequences.shape[0]):
             seq_metadata = []
             token_metadata.append(seq_metadata)
-            for idx, output_token_id in enumerate(model_output.sequences[seq_idx][1:]):
-                beam_idx = model_output.beam_indices[seq_idx][idx]
-                selected_beam_probs = torch.exp(model_output.scores[idx][beam_idx])
 
+            for idx, output_token_id in enumerate(model_output.sequences[seq_idx][1:]):  # from the second token
+                beam_idx = model_output.beam_indices[seq_idx][idx]
+                selected_beam_probs = torch.exp(model_output.scores[idx][beam_idx])  # get prob distn from score
+
+                # top alternatives during beam search
                 beam_top_alternatives = []
                 top_probs = torch.topk(selected_beam_probs, k=3)
                 for i, v in zip(top_probs.indices, top_probs.values):
@@ -95,15 +98,45 @@ def generate_summaries(
                 seq_metadata.append({
                     "token_id": output_token_id,
                     "token": tokenizer.decode(output_token_id),
-                    "entropy": entropy(selected_beam_probs),
-                    "beam_token_prob": selected_beam_probs[output_token_id].item(),
-                    "beam_idx": beam_idx.item(),
-                    "beam_top_probs": beam_top_alternatives,
-                    "token_in_input": output_token_id in input_set,
+                    "entropy": entropy(selected_beam_probs),  # entropy of the selected token
+                    "beam_token_prob": selected_beam_probs[output_token_id].item(),  # prob of the selected token
+                    "beam_idx": beam_idx.item(),  # beam index of the selected token
+                    "beam_top_probs": beam_top_alternatives,  # token, token_id, prob of top K alternatives
+                    "token_in_input": output_token_id in input_token_ids[seq_idx],  # is the selected token in its document? - use for overlap
+                    # bug?
+                    # "token_in_input": output_token_id in input_set
                 })
 
         return generated_summaries, token_metadata
 
+def generate_token_entropy_metadata(
+    bbc_ids: List[str], 
+    seq_metadata: List[dict]) -> Dict[str, Dict]:
+    """
+    Given a list of bbcids and sequence metadata generated from `generate_summaries`,
+    generate token-entropy metadata
+    Args:
+        bbc_ids: list of bbcids
+        seq_metadata: sequence metadata generated from `generate_summaries`
+    Returns:
+        token_entropy_metadata: dict of {bbcid: tokens_with_entropy},
+                                tokens_with_entropy is a list of tuples (token, entropy)
+    """
+    assert len(bbc_ids) == len(seq_metadata), "the number of selected data doesn't match"
+    token_entropy_metadata = {}
+
+    for bbc_id, seq_metadata in zip(bbc_ids, seq_metadata):
+        tokens_with_entropy = []
+        for token_metadata in seq_metadata:
+            tokens_with_entropy.append((
+                token_metadata["token"],
+                token_metadata["entropy"]
+            ))
+
+        token_entropy_metadata[bbc_id] = {
+            "tokens_with_entropy": tokens_with_entropy
+        }
+    return token_entropy_metadata
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
@@ -117,47 +150,55 @@ if __name__ == "__main__":
         help="Comma-separated document BBC IDs in the Xsum dataset",
     )
 
-    parser.add_argument(
-        "--data_split",
-        type=str,
-        required=True,
-        choices=["train", "test", "validation"],
-        help="xsum data split to index into with `data_index`",
-    )
+    # use concatenated data
+    # parser.add_argument(
+    #     "--data_split",
+    #     type=str,
+    #     required=True,
+    #     choices=["train", "test", "validation"],
+    #     help="xsum data split to index into with `data_index`",
+    # )
 
     args = parser.parse_args()
 
-    model, tokenizer = load_summarization_model_and_tokenizer()
+    # load model and tokenizer
+    model_name = "facebook/bart-large-xsum"
+    model, tokenizer = load_summarization_model_and_tokenizer(model_name)
 
-    xsum_data = XsumDataset(datasets.load_dataset("xsum")[args.data_split])
-    selected_data = [xsum_data.data_by_id[x.strip()] for x in args.bbc_ids.split(",")]
+    # load and concatenate datasets
+    xsum_data_raw = datasets.load_dataset("xsum")
+    xsum_data_raw_cc = datasets.concatenate_datasets(
+        [xsum_data_raw["train"], xsum_data_raw["validation"], xsum_data_raw["test"]]
+        )
+    xsum_concat_data = XsumDataset(xsum_data_raw_cc)
+    
+    # select data
+    bbc_ids = [id.strip() for id in args.bbc_ids.split(",")]
+    selected_data = [xsum_concat_data.data_by_id[bbc_id] for bbc_id in bbc_ids]
+    original_docs = [x["document"] for x in selected_data]
 
-    summaries, generation_metadata = generate_summaries(
+    # generate summary
+    gen_summaries, gen_metadata = generate_summaries(
         model,
         tokenizer,
-        [x["document"] for x in selected_data],
+        original_docs,
         num_beams=4,
         return_generation_metadata=True
     )
 
-    summary_metadata = {}
+    # generate summary metadata
+    summary_metadata = generate_token_entropy_metadata(bbc_ids, gen_metadata)
 
-    for source, gen_summary, seq_metadata in zip(selected_data, summaries, generation_metadata):
+    # print (documents) / summaries / (metadata)
+    for source, gen_summary, gen_metadatum in zip(selected_data, gen_summaries, gen_metadata):
         print("XSUM ID", source["id"])
-        print("GOLD STANDARD SUMMARY:", source["true_summary"])
-        print("PREDICTED SUMMARY:", gen_summary)
+        # print("* INPUT DOCUMENT:", source["document"])
+        print("* GROUND TRUTH SUMMARY:", source["true_summary"])
+        print("* GENERATED SUMMARY:", gen_summary)
+        # print("* GENERATION METADATA:", gen_metadatum)
+        print()
 
-        tokens_with_entropy = []
-        for token_metadata in seq_metadata:
-            tokens_with_entropy.append((
-                token_metadata["token"],
-                token_metadata["entropy"]
-            ))
-
-        summary_metadata[source["id"]] = {
-            "tokens_with_entropy": tokens_with_entropy
-        }
-
+    # store summaries - TODO
     # store_model_summaries(
     #     "xsum",
     #     model.config.name_or_path,
