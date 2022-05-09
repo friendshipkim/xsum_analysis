@@ -2,7 +2,7 @@ import streamlit as st
 
 # from analysis import storage
 from backend.viz_data_model_loader import load_concat_data, load_model_and_tokenizer
-from generate_xsum_summary_from_input import generate_summaries
+from generate_xsum_summary import generate_summaries
 
 # import pandas as pd
 

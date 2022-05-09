@@ -1,7 +1,7 @@
 import streamlit as st
 import datasets
 from xsum_dataset import XsumDataset
-from generate_xsum_summary_from_input import load_summarization_model_and_tokenizer
+from generate_xsum_summary import load_summarization_model_and_tokenizer
 
 # def prepare_data_for_view(data):
 #     factuality_data = {}
