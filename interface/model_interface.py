@@ -4,6 +4,10 @@ import streamlit as st
 from backend.viz_data_model_loader import load_concat_data, load_model_and_tokenizer
 from generate_xsum_summary import generate_summaries
 
+# scorer
+from utils import score
+
+
 # import pandas as pd
 
 # cache_summaries = storage.get_summaries("xsum", "facebook-bart-large-xsum")
@@ -61,7 +65,8 @@ def render_model_interface():
         num_beams=4,
         return_generation_metadata=True,
     )
-    st.write(gen_summary[0])
+    gen_summary = gen_summary[0]  # out of list
+    st.write(gen_summary)
     # st.write(gen_metadata)
 
     # Generated Summary from Perturbed Document
@@ -73,14 +78,55 @@ def render_model_interface():
         num_beams=4,
         return_generation_metadata=True,
     )
-    st.write(ptb_summary[0])
+    ptb_summary = ptb_summary[0]  # out of list
+    st.write(ptb_summary)
     # st.write(ptb_metadata)
 
-    # Comparison
-    st.header("Comparison")
+    # Evaluation
+    st.header("Evaluation")
     st.write("* Perturbed document == original document?:", ptb_document == document)
     st.write("* Perturbed summary == generated summary?:", ptb_summary == gen_summary)
 
+    # bertscore, rouge1
+
+    bert_score_precisions, bert_score_recalls, bert_score_fmeasures = score(
+        hyps=[gen_summary, ptb_summary], 
+        ref=true_summary, 
+        metric="bertscore", 
+        model_type="roberta-large"
+    )
+    rouge1_precisions, rouge1_recalls, rouge1_fmeasures = score(
+        hyps=[gen_summary, ptb_summary], 
+        ref=true_summary, 
+        metric="rouge1"
+    )
+    rouge2_precisions, rouge2_recalls, rouge2_fmeasures = score(
+        hyps=[gen_summary, ptb_summary], 
+        ref=true_summary, 
+        metric="rouge2"
+    )
+    rougeL_precisions, rougeL_recalls, rougeL_fmeasures = score(
+        hyps=[gen_summary, ptb_summary], 
+        ref=true_summary, 
+        metric="rougeL"
+    )
+
+    st.subheader("F1 rouge1 score")
+    st.write("* generated summary:", rouge1_fmeasures[0])
+    st.write("* pertrubed summary:", rouge1_fmeasures[1])
+
+    st.subheader("F1 rouge2 score")
+    st.write("* generated summary:", rouge2_fmeasures[0])
+    st.write("* pertrubed summary:", rouge2_fmeasures[1])
+
+    st.subheader("F1 rougeL score")
+    st.write("* generated summary:", rougeL_fmeasures[0])
+    st.write("* pertrubed summary:", rougeL_fmeasures[1])
+
+    st.subheader("F1 bert-score using roberta-large")
+    st.write("* generated summary:", bert_score_fmeasures[0])
+    st.write("* pertrubed summary:", bert_score_fmeasures[1])
+    
     # # Output summarization
     # predicted_summary = cache_summaries[selected_id]["summary"][0]
     # st.subheader("Predicted Summary")
