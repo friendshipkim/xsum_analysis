@@ -1,5 +1,7 @@
 # ignore cache dirs
 cache*/
+data/
+fairseq/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
