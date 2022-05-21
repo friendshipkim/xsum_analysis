@@ -10,6 +10,7 @@ class XsumDataset(Dataset):
         self.faithfulness_data = faithfulness_data
         self.dataset = list(self._align_data().values())
         self.data_by_id = {x["id"]: x for x in self.dataset}
+        self.ids = [x["id"] for x in self.dataset]
 
     def query_by_bbc_id(self, bbc_id):
         if str(bbc_id) in self.data_by_id:
