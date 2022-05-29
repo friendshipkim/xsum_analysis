@@ -1,8 +1,32 @@
 import torch
+from torch import nn, Tensor
 import bert_score
 from rouge_score import rouge_scorer
 
+# criterion
+criterion = nn.CrossEntropyLoss(ignore_index=-100, reduction="none")
 
+# =========== log probs utils
+def calculate_log_probs(logits: Tensor, labels: Tensor) -> Tensor:
+    """
+    Given logit tensor and labels, calculate log probs of each sequences
+    Args:
+        logits: logit tensor (shape: [num_seqs, max_seq_len, vocab_size])
+        labels: label tensor (shape: [num_seqs, max_seq_len])
+    Returns:
+        seq_logprobs: torch.Tensor (shape: [num_seqs])
+    """
+    # losses of sequences, shape: [num_seqs, max_seq_len]
+    # loss is negative log probability
+    seq_losses = criterion(logits.permute(0, 2, 1), labels)
+    seq_losses_masked = seq_losses.masked_fill(seq_losses==0., torch.nan)  # mask 0 with nan to ignore padding
+    
+    # log probabilities of sequences, shape: [num_seqs]
+    seq_logprobs = -seq_losses_masked.nansum(1)
+
+    return seq_logprobs
+
+# ========= summary scoring utils
 def entropy(p_dist: torch.Tensor) -> float:
     """"
     Calculates Shannon entropy for a probability distribution
