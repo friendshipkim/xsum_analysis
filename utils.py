@@ -1,3 +1,6 @@
+import pickle
+import os
+
 import torch
 from torch import nn, Tensor
 import bert_score
@@ -25,6 +28,21 @@ def calculate_log_probs(logits: Tensor, labels: Tensor) -> Tensor:
     seq_logprobs = -seq_losses_masked.nansum(1)
 
     return seq_logprobs
+
+# ========= caching utils
+def save_to_cache_dir(var, file_name, cache_dir = "./cache"):
+    file_path = os.path.join(cache_dir, file_name + ".pkl")
+    with open(file_path, "wb") as f:
+        pickle.dump(var, f, protocol=pickle.HIGHEST_PROTOCOL)
+    print(f"saved to '{file_path}'")
+
+def load_from_cache_dir(file_name, cache_dir = "./cache"):
+    file_path = os.path.join(cache_dir, file_name + ".pkl")
+    with open(file_path, 'rb') as f:
+        var = pickle.load(f)
+    print(f"'{file_path}' loaded")
+    return var
+
 
 # ========= summary scoring utils
 def entropy(p_dist: torch.Tensor) -> float:

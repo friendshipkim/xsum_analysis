@@ -1,21 +1,6 @@
-import pickle
-import os
 from tqdm import tqdm
 from collections import Counter
 
-
-def save_to_cache_dir(var, file_name, cache_dir = "./cache"):
-    file_path = os.path.join(cache_dir, file_name + ".pkl")
-    with open(file_path, "wb") as f:
-        pickle.dump(var, f, protocol=pickle.HIGHEST_PROTOCOL)
-    print(f"saved to '{file_path}'")
-
-def load_from_cache_dir(file_name, cache_dir = "./cache"):
-    file_path = os.path.join(cache_dir, file_name + ".pkl")
-    with open(file_path, 'rb') as f:
-        var = pickle.load(f)
-    print(f"'{file_path}' loaded")
-    return var
 
 def tag_dataset(tagger, xsum_dataset, return_ner_list=True):
     doc_ner_list = []
