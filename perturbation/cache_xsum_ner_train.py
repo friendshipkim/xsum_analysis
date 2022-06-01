@@ -30,16 +30,14 @@ save_idx = 10  # split jobs
 for start_idx, end_idx in zip(start_idxs[save_idx:], end_idxs[save_idx:]):
     _, _, train_doc_ents_list, train_sum_ents_list = tag_dataset(
         tagger=NER,
-        xsum_dataset=xsum_train_dataset[start_idx: end_idx], 
+        xsum_dataset=xsum_train_dataset[start_idx:end_idx],
         return_ner_list=False,
-        )
+    )
 
     # save to cache directory
     save_to_cache_dir(
-        train_doc_ents_list, 
-        f"train_doc_ents_list_{start_idx}_{end_idx}",
-        cache_dir)
+        train_doc_ents_list, f"train_doc_ents_list_{start_idx}_{end_idx}", cache_dir
+    )
     save_to_cache_dir(
-        train_sum_ents_list, 
-        f"train_sum_ents_list_{start_idx}_{end_idx}",
-        cache_dir)
+        train_sum_ents_list, f"train_sum_ents_list_{start_idx}_{end_idx}", cache_dir
+    )
