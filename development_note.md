@@ -1,5 +1,25 @@
 # Development note
 
+## Create perturbed documents
+1. insert
+   * currently available options
+     * insert_num_options = [1, 2]
+     * insert_1_options = ["top1", "random"]
+     * insert_2_options = ["topbottom", "random"]
+   * how to cache
+        ``` bash
+        python perturbation/insert_off_topic.py --num_insert 1 --insert_position top1
+        ```
+2. named entity replacement
+   * currently available options
+     * insert_num_options = [1, 2]
+     * insert_1_options = ["top1", "random"]
+     * insert_2_options = ["topbottom", "random"]
+   * how to cache
+        ``` bash
+        python perturbation/insert_off_topic.py --num_insert 1 --insert_position top1
+        ```
+
 ## Cached data structure
 * Data structure of ptb_random_metadata
 ``` python
