@@ -1,14 +1,14 @@
 from tqdm import tqdm
 from collections import Counter
 from typing import Type, List, Tuple
-import spacy
+import spacy.lang.en
 
 
 def tag_dataset(
     tagger: Type[spacy.lang.en.English],
     xsum_dataset: List,
     return_ner_list: bool = True,
-) -> Tuple(List, List, List, List):
+) -> Tuple[List, List, List, List]:
     doc_ner_list = []
     sum_ner_list = []
     doc_ents_list = []
