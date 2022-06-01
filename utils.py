@@ -1,8 +1,9 @@
 import pickle
 import os
-
 import torch
+import numpy as np
 from torch import nn, Tensor
+from typing import List
 
 import config as cfg
 
@@ -49,6 +50,30 @@ def load_from_cache_dir(file_name: str, cache_dir: str) -> object:
         var = pickle.load(f)
     print(f"'{file_path}' loaded")
     return var
+
+# ========= KL divergence utils
+def calculate_KL(p_s: List, q_s: List, est_type: str="basic") -> np.array:
+    """
+    given two lists of log prob tensors, return an array of KL-divergences
+    Args:
+        p_s: list of log prob tensors, (length: # of xsum test samples, log prob tensor shape: [num_seqs])
+        q_s: list of log prob tensors, (length: # of xsum test samples, log prob tensor shape: [num_seqs])
+        est_type: type of extimator (Default: basic)
+    Returns:
+        an array of KL divergences (length: # of xsum test samples)
+    """
+    assert len(p_s) == len(q_s)
+    kl_list = []
+    for p, q in zip(p_s, q_s):
+        if len(q) == 0:  # for ner - skipping this sample
+            kl_list.append(np.nan)
+            continue
+        
+        assert p.size(0) == q.size(0)
+        num_y = p.size(0)
+
+        kl_list.append((torch.sum(p - q) / num_y).item())
+    return np.array(kl_list)
 
 
 # ========= summary scoring utils
