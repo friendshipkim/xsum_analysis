@@ -5,7 +5,6 @@ import torch
 from torch import nn, Tensor
 
 import config as cfg
-from typing import Object
 
 import bert_score
 from rouge_score import rouge_scorer
@@ -37,14 +36,14 @@ def calculate_log_probs(logits: Tensor, labels: Tensor) -> Tensor:
 
 
 # ========= caching utils
-def save_to_cache_dir(var: Object, file_name: str, cache_dir: str) -> None:
+def save_to_cache_dir(var: object, file_name: str, cache_dir: str) -> None:
     file_path = os.path.join(cache_dir, file_name + ".pkl")
     with open(file_path, "wb") as f:
         pickle.dump(var, f, protocol=pickle.HIGHEST_PROTOCOL)
     print(f"saved to '{file_path}'")
 
 
-def load_from_cache_dir(file_name: str, cache_dir: str) -> Object:
+def load_from_cache_dir(file_name: str, cache_dir: str) -> object:
     file_path = os.path.join(cache_dir, file_name + ".pkl")
     with open(file_path, "rb") as f:
         var = pickle.load(f)
