@@ -1,14 +1,13 @@
 import argparse
 import torch
 import datasets
+import config
 from typing import List, Tuple, Dict
 from utils import entropy
 from xsum_dataset import XsumDataset
 
 # from sumtool.storage import store_model_summaries
 from transformers import BartTokenizer, BartForConditionalGeneration
-
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
 def load_summarization_model_and_tokenizer(
@@ -21,7 +20,7 @@ def load_summarization_model_and_tokenizer(
     """
     tokenizer = BartTokenizer.from_pretrained(model_name)
     model = BartForConditionalGeneration.from_pretrained(model_name)
-    model.to(device)
+    model.to(config.device)
 
     return model, tokenizer
 
@@ -54,7 +53,7 @@ def generate_summaries(
         return_tensors="pt",
         padding=True,
     )
-    input_token_ids = inputs.input_ids.to(device)
+    input_token_ids = inputs.input_ids.to(config.device)
 
     model_output = model.generate(
         input_token_ids,

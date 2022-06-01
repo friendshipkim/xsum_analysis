@@ -12,24 +12,23 @@ from typing import List
 import datasets
 from xsum_dataset import XsumDataset
 
+import config as cfg
 from generate_xsum_summary import load_summarization_model_and_tokenizer
 from utils import calculate_log_probs, load_from_cache_dir, save_to_cache_dir
 
 import torch
 
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
+# # ========== default parameters ==========
+# model_name = "facebook/bart-large-xsum"
 
-# ========== default parameters ==========
-model_name = "facebook/bart-large-xsum"
+# ptb_docs_dir = "/home/wk247/workspace/xsum_analysis/cache/ptb_docs"
+# gen_seqs_dir = "/home/wk247/workspace/xsum_analysis/cache/gen_seqs"
+# log_probs_dir = "/home/wk247/workspace/xsum_analysis/cache/log_probs"
 
-ptb_docs_dir = "/home/wk247/workspace/xsum_analysis/cache/ptb_docs"
-gen_seqs_dir = "/home/wk247/workspace/xsum_analysis/cache/gen_seqs"
-log_probs_dir = "/home/wk247/workspace/xsum_analysis/cache/log_probs"
-
-summary_generation_methods = ["beam", "topp", "topk"]
-document_ptb_methods = ["insert", "ner"]
-# ========================================
+# summary_generation_methods = ["beam", "topp", "topk", "true"]
+# document_ptb_methods = ["insert", "ner"]
+# # ========================================
 
 # decode multiple sequences
 def decode_mult_seqs(
@@ -52,16 +51,16 @@ def parse_args():
         "--model_name",
         type=str,
         required=False,
-        default=model_name,
-        help="Summarization model to test (Default: facebook/bart-large-xsum)",
+        default=cfg.model_name,
+        help=f"Summarization model to test (Default: {cfg.model_name})",
     )
 
     parser.add_argument(
         "--gen_method",
         type=str,
         required=True,
-        choices=summary_generation_methods,
-        help=f"Method used to generate summaries (Choices: {summary_generation_methods})",
+        choices=cfg.summary_generation_methods,
+        help=f"Method used to generate summaries (Choices: [{cfg.summary_generation_methods}])",
     )
 
     parser.add_argument(
@@ -72,8 +71,8 @@ def parse_args():
         "--ptb_method",
         type=str,
         required=True,
-        choices=document_ptb_methods,
-        help=f"Method used to perturb input documents (Choices: {document_ptb_methods})",
+        choices=cfg.document_ptb_methods,
+        help=f"Method used to perturb input documents (Choices: [{cfg.document_ptb_methods}])",
     )
 
     # arguments for insertion perturbation
@@ -89,6 +88,15 @@ def parse_args():
         type=str,
         required=False,
         help="Position of inserted sentences",
+    )
+
+    # arguments for named entity replacement
+    parser.add_argument(
+        "--ner_tagger",
+        type=str,
+        required=False,
+        default=cfg.ner_tagger,
+        help=f"Type of NER tagger (Default: {cfg.ner_tagger})",
     )
 
     args = parser.parse_args()
@@ -113,17 +121,17 @@ if __name__ == "__main__":
 
     # load sequences list
     gen_seqs_list = load_from_cache_dir(
-        f"gen_seqs_{args.gen_method}_{args.num_seqs}", gen_seqs_dir
+        f"gen_seqs_{args.gen_method}_{args.num_seqs}", cfg.gen_seqs_dir
     )
 
     # load perturbed documents list
     if args.ptb_method == "ner":
-        ptb_docs_filename = f"ptb_docs_list_trf"  # TODO: add other than trf
+        ptb_docs_filename = f"ptb_docs_list_{args.ner_tagger}"
     elif args.ptb_method == "insert":
         ptb_docs_filename = f"ptb_docs_list_{args.num_insert}_{args.insert_position}"
 
     ptb_docs_list = load_from_cache_dir(
-        ptb_docs_filename, join(ptb_docs_dir, args.ptb_method)
+        ptb_docs_filename, join(cfg.ptb_docs_dir, args.ptb_method)
     )
 
     assert len(gen_seqs_list) == len(ptb_docs_list)
@@ -173,13 +181,13 @@ if __name__ == "__main__":
             return_tensors="pt",
             padding=True,
         )
-        ptb_doc_token_ids = inputs.input_ids.to(device)
+        ptb_doc_token_ids = inputs.input_ids.to(cfg.device)
 
         # process generated sequences to use them as labels
         gen_seqs_clean = gen_seqs[:, 1:]  # remove <sos> token to make labels
         gen_labels = gen_seqs_clean.masked_fill(
-            gen_seqs_clean == tokenizer.pad_token_id, -100
-        ).to(device)  # pad with -100
+            gen_seqs_clean == tokenizer.pad_token_id, cfg.mask_idx
+        ).to(cfg.device)  # pad with -100
 
         # feed the document to the model to get log probs
         with torch.no_grad():
@@ -196,11 +204,11 @@ if __name__ == "__main__":
 
     # ======== save it to log probs dir
     # directory differs from generation methods and the number of summaries
-    save_dir = join(log_probs_dir, f"{args.gen_method}_{args.num_seqs}")
+    save_dir = join(cfg.log_probs_dir, f"{args.gen_method}_{args.num_seqs}")
 
     if args.ptb_method == "ner":
         ptb_log_probs_filename = (
-            f"ptb_log_probs_list_ner_trf"  # TODO: add other than trf
+            f"ptb_log_probs_list_ner_{args.ner_tagger}"
         )
     elif args.ptb_method == "insert":
         ptb_log_probs_filename = f"ptb_log_probs_list_{args.ptb_method}_{args.num_insert}_{args.insert_position}"

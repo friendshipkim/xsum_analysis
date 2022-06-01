@@ -2,23 +2,22 @@
 # TODO: now only supports trf
 randomly replace the named entity of test documents
 """
+from os.path import join
+from tqdm.notebook import tqdm
 
 import datasets
 from xsum_dataset import XsumDataset
 
-from tqdm.notebook import tqdm
-
 import spacy
+import config as cfg
 from utils import load_from_cache_dir, save_to_cache_dir
 
 import random
-
-random.seed(0)
+random.seed(cfg.seed)
 
 # hyperparameters
-save_cache_dir = "/home/wk247/workspace/xsum_analysis/cache/ptb_docs/ner"
-ner_cache_dir = "/home/wk247/workspace/xsum_analysis/cache/ner/trf"
-pool_size_reduction_ratio = 0.1
+ptb_docs_save_dir = join(cfg.ptb_docs_dir, "ner")
+ner_cache_dir = join(cfg.ner_dir, cfg.ner_tagger)
 
 # load dataset
 xsum_data_raw = datasets.load_dataset("xsum")
@@ -38,27 +37,17 @@ test_sum_ents_list = load_from_cache_dir("test_sum_ents_list_no_dup", ner_cache_
 val_test_ent_pool_dict = load_from_cache_dir("val_test_ent_pool_dict", ner_cache_dir)
 
 # filter labels
-NER = spacy.load("en_core_web_trf")
-ALL_LABELS = list(NER.get_pipe("ner").labels)
-FILTER_LABELS = [
-    "PERSON",
-    "FAC",
-    "GPE",
-    "NORP",
-    "LOC",
-    "EVENT",
-    "LANGUAGE",
-    "LAW",
-    "ORG",
-]
+NER = spacy.load(f"en_core_web_{cfg.ner_tagger}")
+all_labels = list(NER.get_pipe("ner").labels)
+filter_labels = cfg.filter_labels
 
 
 # extract only necessary dicts
 ent_pool_dict = val_test_ent_pool_dict
-for label in ALL_LABELS:
-    if label not in FILTER_LABELS:
+for label in all_labels:
+    if label not in filter_labels:
         del ent_pool_dict[label]
-assert len(ent_pool_dict) == len(FILTER_LABELS)
+assert len(ent_pool_dict) == len(filter_labels)
 
 # reduce entity pool size
 reduced_ent_pool_dict = {}
@@ -67,7 +56,7 @@ for label in ent_pool_dict.keys():
     reduced_ent_pool = {
         k: v
         for (k, v) in list(ent_pool.items())[
-            : int(len(ent_pool) * pool_size_reduction_ratio)
+            : int(len(ent_pool) * cfg.pool_size_reduction_ratio)
         ]
     }
     reduced_ent_pool_dict[label] = reduced_ent_pool
@@ -117,12 +106,12 @@ for data_idx, data in enumerate(tqdm(xsum_test_data.dataset)):
     doc_ents_filtered_sorted = [
         ((ent, label), count)
         for ((ent, label), count) in doc_ents.most_common()
-        if label in FILTER_LABELS
+        if label in filter_labels
     ]
     sum_ents_filtered_sorted = [
         ((ent, label), count)
         for ((ent, label), count) in sum_ents.most_common()
-        if label in FILTER_LABELS
+        if label in filter_labels
     ]
 
     # if there is an overlap
@@ -132,12 +121,12 @@ for data_idx, data in enumerate(tqdm(xsum_test_data.dataset)):
     chosen_label = None
 
     # from document side
-    #     print(f"* summary: {true_summary}")
-    #     print(f"* document ents: {doc_ents_filtered_sorted} \n")
+    # print(f"* summary: {true_summary}")
+    # print(f"* document ents: {doc_ents_filtered_sorted} \n")
     for (ent, label), count in doc_ents_filtered_sorted:
         if ent in true_summary:  # overlap exists
-            #             print("** overlap from document")
-            #             print(f"ent: {ent}, label: {label}, count_doc: {count}, count_sum: {true_summary.count(ent)}")
+            # print("** overlap from document")
+            # print(f"ent: {ent}, label: {label}, count_doc: {count}, count_sum: {true_summary.count(ent)}")
             overlap_flag = True
             chosen_ent, chosen_label = ent, label
             break
@@ -147,11 +136,11 @@ for data_idx, data in enumerate(tqdm(xsum_test_data.dataset)):
         if len(sum_ents) == 0:  # no entity in summary -> pass
             pass
         else:
-            #             print(f"* summary ents: {sum_ents_filtered_sorted} \n")
+            # print(f"* summary ents: {sum_ents_filtered_sorted} \n")
             for (ent, label), count in sum_ents_filtered_sorted:
                 if ent in original_doc:
-                    #                     print("** overlap from summary")
-                    #                     print(f"ent: {ent}, label: {label}, count_sum: {count}, count_doc: {original_doc.count(ent)}")
+                    # print("** overlap from summary")
+                    # print(f"ent: {ent}, label: {label}, count_sum: {count}, count_doc: {original_doc.count(ent)}")
                     overlap_flag = True
                     chosen_ent, chosen_label = ent, label
                     break
@@ -195,4 +184,4 @@ for data_idx, data in enumerate(tqdm(xsum_test_data.dataset)):
         ptb_list.append({})
 
 # save
-# save_to_cache_dir(ptb_list, "ptb_docs_list_trf", save_cache_dir)
+# save_to_cache_dir(ptb_list, f"ptb_docs_list_{cfg.ner_tagger}", ptb_docs_save_dir)

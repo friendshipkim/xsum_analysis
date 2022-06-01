@@ -4,21 +4,23 @@ from tqdm import tqdm
 import datasets
 from xsum_dataset import XsumDataset
 
+import config as cfg
 from generate_xsum_summary import load_summarization_model_and_tokenizer
 from utils import save_to_cache_dir
 
 import torch
+
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
-# ========== default parameters ==========
-model_name = "facebook/bart-large-xsum"
-gen_seqs_dir = "/home/wk247/workspace/xsum_analysis/cache/gen_seqs"
-max_summary_length = 150
+# # ========== default parameters ==========
+# model_name = "facebook/bart-large-xsum"
+# gen_seqs_dir = "/home/wk247/workspace/xsum_analysis/cache/gen_seqs"
+# max_summary_length = 150
 
-summary_generation_methods = ["beam", "topp", "topk"]
-seed = 0
-# ========================================
+# summary_generation_methods = ["true", "beam", "topp", "topk"]
+# seed = 0
+# # ========================================
 
 
 # not used for now
@@ -35,70 +37,72 @@ def generate_seqs_beam():
     )
     return beam_mult_output
 
+
 def generate_seqs_topk():
     topk_multi_output = model.generate(
         input_ids=original_doc_token_ids,
-        do_sample=True, 
-        max_length=max_length, 
+        do_sample=True,
+        max_length=max_length,
         top_k=args.k,
         num_return_sequences=args.num_return_seqs,
     )
     return topk_multi_output
 
+
 def generate_seqs_topp():
     topp_multi_output = model.generate(
         input_ids=original_doc_token_ids,
-        do_sample=True, 
-        max_length=max_length, 
+        do_sample=True,
+        max_length=max_length,
         top_k=0,
         top_p=args.probs,
         num_return_sequences=args.num_return_seqs,
     )
     return topp_multi_output
 
+
 # =====================
 
+
 def parse_args():
-    parser = argparse.ArgumentParser(
-        description="Script to generate summaries"
-    )
+    parser = argparse.ArgumentParser(description="Script to generate summaries")
 
     parser.add_argument(
         "--model_name",
         type=str,
         required=False,
-        default=model_name,
-        help="Summarization model to test (Default: facebook/bart-large-xsum)",
+        default=cfg.model_name,
+        help=f"Summarization model to test (Default: {cfg.model_name})",
     )
 
     parser.add_argument(
         "--max_length",
         type=int,
         required=False,
-        default=max_summary_length,
-        help=f"Maximum summary length (default: {max_summary_length}))",
+        default=cfg.max_summary_length,
+        help=f"Maximum summary length (default: [{cfg.max_summary_length}]))",
     )
 
     parser.add_argument(
         "--gen_method",
         type=str,
         required=True,
-        choices=summary_generation_methods,
-        help=f"Method to generate summaries (Choices: {summary_generation_methods})",
+        choices=cfg.summary_generation_methods,
+        help=f"Method to generate summaries (Choices: [{cfg.summary_generation_methods}])",
     )
 
     parser.add_argument(
         "--num_return_seqs",
         type=int,
         required=True,
-        help="The number of returned sequences (the size of summary pool)",
+        help="The number of returned sequences (the size of summary pool), if gen_method='true', 1",
     )
 
     # beam search method
     parser.add_argument(
-        "--num_beams", # now num_return_seqs = num_beams
-        type=int, 
-        required=False, 
+        "--num_beams",  # now num_return_seqs = num_beams
+        type=int,
+        required=False,
         help="Beam size",
     )
 
@@ -113,16 +117,14 @@ def parse_args():
     # topp
     parser.add_argument(
         "--seed",
-        type=int, 
-        required=False, 
-        help="Torch random seed (default: 0)",
+        type=int,
+        required=False,
+        default=cfg.seed,
+        help=f"Torch random seed (default: {cfg.seed})",
     )
 
     parser.add_argument(
-        "--prob",
-        type=float, 
-        required=False, 
-        help="Probability for top-p sampling ",
+        "--prob", type=float, required=False, help="Probability for top-p sampling ",
     )
 
     args = parser.parse_args()
@@ -133,15 +135,11 @@ def parse_args():
             parser.error("'beam' method requires --num_beams and --early_stopping")
         if args.num_beams <= 1:
             parser.error("'beam' method requires beam size > 1")
-    
-    elif args.gen_method == "topk" and (
-        args.seed is None or args.k is None
-    ):
+
+    elif args.gen_method == "topk" and (args.seed is None or args.k is None):
         parser.error("'topk' method requires --seed and --k")
-    
-    elif args.gen_method == "topp" and (
-        args.seed is None or args.prob is None
-    ):
+
+    elif args.gen_method == "topp" and (args.seed is None or args.prob is None):
         parser.error("'topp' method requires --seed and --prob")
 
     return args
@@ -161,11 +159,28 @@ if __name__ == "__main__":
     xsum_data_raw = datasets.load_dataset("xsum")
     xsum_test_dataset = XsumDataset(xsum_data_raw["test"]).dataset
 
+    # if true summary, just save tokenized sequences and exit
+    if args.gen_method == "true":
+        true_summary_list = [data["true_summary"] for data in xsum_test_dataset]
+        true_sequence_list = []
+        for true_summary in true_summary_list:
+            true_sequence = tokenizer(
+                true_summary, truncation=True, return_tensors="pt", padding=True,
+            ).input_ids
+            true_sequence_list.append(true_sequence)
+
+        # save it to cache dir
+        save_to_cache_dir(
+            true_sequence_list,
+            f"gen_seqs_{args.gen_method}_{args.num_return_seqs}",
+            cfg.gen_seqs_dir,
+        )
+
+        exit()
+
     # TODO
     # model generate arguments
-    gen_args = {
-        "num_return_sequences": args.num_return_seqs
-    }
+    gen_args = {"num_return_sequences": args.num_return_seqs}
 
     if args.gen_method == "beam":
         # gen_seqs = generate_seqs_beam()
@@ -180,7 +195,7 @@ if __name__ == "__main__":
         # gen_seqs = generate_seqs_topp()
         gen_args["do_sample"] = True
         gen_args["top_p"] = args.probs
-    
+
     # ======= generate summaries with beam search
     gen_seqs_list = []
     for i, data in enumerate(xsum_test_dataset):
@@ -200,11 +215,11 @@ if __name__ == "__main__":
             padding=True,
         )
         original_doc_token_ids = inputs.input_ids.to(device)
-        
+
         # generate summaries
         gen_args["input_ids"] = original_doc_token_ids
         gen_seqs = model.generate(**gen_args)
-        
+
         assert gen_seqs.size(0) == args.num_return_seqs
         gen_seqs_list.append(gen_seqs.cpu())
 
@@ -213,9 +228,9 @@ if __name__ == "__main__":
     # save it to cache dir
     # TODO: file naming rule
     save_to_cache_dir(
-        gen_seqs_list, 
-        f"gen_seqs_{args.gen_method}_{args.num_beams}",
-        gen_seqs_dir
+        gen_seqs_list,
+        f"gen_seqs_{args.gen_method}_{args.num_return_seqs}",
+        cfg.gen_seqs_dir,
     )
 
     exit()
@@ -226,13 +241,12 @@ if __name__ == "__main__":
     max_length = 100
     sequences_dump = []
 
-
     while gen_count < target_count:
         sample_multi_output = model.generate(
             original_doc_token_ids[None, :],
-            do_sample=True, 
-            max_length=100, 
-            top_p=0.92, 
+            do_sample=True,
+            max_length=100,
+            top_p=0.92,
             # top_k=30,
             num_return_sequences=args.num_return_seqs,
             return_dict_in_generate=True,
@@ -244,9 +258,8 @@ if __name__ == "__main__":
         gen_count += unique_output.shape[0]
         print("gen_count", gen_count)
 
-
     for dump in sequences_dump:
         dump_seq_num, dump_max_length = dump.size()
-        dump_padding = torch.ones(dump_seq_num, max_length-dump_max_length).to(device)
+        dump_padding = torch.ones(dump_seq_num, max_length - dump_max_length).to(device)
         dump_padded = torch.cat((dump, dump_padding), dim=1).long()
     breakpoint()
