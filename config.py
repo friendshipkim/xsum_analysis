@@ -30,6 +30,8 @@ pool_size_reduction_ratio = 0.1
 # summary generation
 summary_generation_methods = ["true", "beam", "topp", "topk"]
 max_summary_length = 150
+num_return_seqs_per_trial = 30  # for sampling
+max_trial = 30  # for sampling
 
 # log prob
 mask_idx = -100
