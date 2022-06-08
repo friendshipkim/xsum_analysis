@@ -72,7 +72,10 @@ def calculate_KL(p_s: List, q_s: List, est_type: str="basic") -> np.array:
         assert p.size(0) == q.size(0)
         num_y = p.size(0)
 
-        kl_list.append((torch.sum(p - q) / num_y).item())
+        if est_type == "basic":
+            kl_list.append((torch.sum(p - q) / num_y).item())
+        else:  # TODO: implement other kl estimators
+            pass
     return np.array(kl_list)
 
 
