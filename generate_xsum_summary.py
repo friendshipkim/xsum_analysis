@@ -1,7 +1,7 @@
 import argparse
 import torch
 import datasets
-import config
+import config as cfg
 from typing import List, Tuple, Dict
 from utils import entropy
 from xsum_dataset import XsumDataset
@@ -20,7 +20,7 @@ def load_summarization_model_and_tokenizer(
     """
     tokenizer = BartTokenizer.from_pretrained(model_name)
     model = BartForConditionalGeneration.from_pretrained(model_name)
-    model.to(config.device)
+    model.to(cfg.device)
 
     return model, tokenizer
 
@@ -48,17 +48,16 @@ def generate_summaries(
     """
     inputs = tokenizer(
         docs_to_summarize,
-        # max_length=1024,  # default is 1024 for 'facebook/bart-large-xsum'
         truncation=True,
         return_tensors="pt",
         padding=True,
     )
-    input_token_ids = inputs.input_ids.to(config.device)
+    input_token_ids = inputs.input_ids.to(cfg.device)
 
     model_output = model.generate(
         input_token_ids,
         num_beams=num_beams,
-        max_length=150,
+        max_length=cfg.max_summary_length,
         early_stopping=True,
         return_dict_in_generate=True,
         output_scores=True,
