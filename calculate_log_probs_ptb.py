@@ -34,12 +34,16 @@ import torch
 def decode_mult_seqs(
     seq_tokens: torch.LongTensor, skip_special_tokens: bool = True
 ) -> List[str]:
-    return [
-        tokenizer.decode(
-            seq, skip_special_tokens=True, clean_up_tokenization_spaces=False
-        )
-        for seq in seq_tokens
-    ]
+    return tokenizer.batch_decode(
+        seq_tokens,
+        skip_special_tokens=skip_special_tokens, 
+        clean_up_tokenization_spaces=False)
+    # return [
+    #     tokenizer.decode(
+    #         seq, skip_special_tokens=skip_special_tokens, clean_up_tokenization_spaces=False
+    #     )
+    #     for seq in seq_tokens
+    # ]
 
 
 def parse_args():
@@ -176,7 +180,6 @@ if __name__ == "__main__":
         # tokenize ptb document
         inputs = tokenizer(
             ptb_doc,
-            # max_length=1024,  # default is 1024 for 'facebook/bart-large-xsum'
             truncation=True,
             return_tensors="pt",
             padding=True,

@@ -86,7 +86,6 @@ if __name__ == "__main__":
         # tokenize original document
         inputs = tokenizer(
             original_doc,
-            # max_length=1024,  # default is 1024 for 'facebook/bart-large-xsum'
             truncation=True,
             return_tensors="pt",
             padding=True,
