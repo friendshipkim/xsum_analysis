@@ -53,6 +53,11 @@
     ```
 
 ## Summary generation methods
+* **true summary**
+  * example
+  ``` bash
+  python generate_summary.py --gen_method true --num_return_seqs 1
+  ```
 * **greedy decoding** by calling `greedy_search()` if `num_beams=1` and `do_sample=False`.
 * **multinomial sampling** by calling `sample()` if `num_beams=1` and `do_sample=True`.
 * **beam-search decoding** by calling `beam_search()` if `num_beams>1` and `do_sample=False`.
@@ -64,3 +69,17 @@
 * **diverse beam-search decoding** by calling `group_beam_search()`, if `num_beams>1` and `num_beam_groups>1`.
 * **constrained beam-search decoding** by calling `constrained_beam_search()`, if `constraints!=None` or `force_words_ids!=None`.
 
+
+* python generate_summary.py --num_return_seqs 20 --gen_method topk --k 20 
+
+## Calculate log probabilities
+1. Original documents
+  ```bash
+  bash scripts/cache_log_probs_original.sh
+  ```
+  * change arguments for different generation methods and number of sequences
+2. Perturbed documents
+   ```bash
+  bash scripts/cache_log_probs_ptb.sh
+  ```
+  * change arguments for different generation methods and number of sequences
