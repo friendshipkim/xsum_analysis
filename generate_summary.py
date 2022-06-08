@@ -10,8 +10,6 @@ from utils import save_to_cache_dir
 
 import torch
 
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
 
 # # ========== default parameters ==========
 # model_name = "facebook/bart-large-xsum"
@@ -42,7 +40,7 @@ def generate_seqs_topk():
     topk_multi_output = model.generate(
         input_ids=original_doc_token_ids,
         do_sample=True,
-        max_length=max_length,
+        max_length=args.max_length,
         top_k=args.k,
         num_return_sequences=args.num_return_seqs,
     )
@@ -53,15 +51,21 @@ def generate_seqs_topp():
     topp_multi_output = model.generate(
         input_ids=original_doc_token_ids,
         do_sample=True,
-        max_length=max_length,
+        max_length=args.max_length,
         top_k=0,
-        top_p=args.probs,
+        top_p=args.p,
         num_return_sequences=args.num_return_seqs,
     )
     return topp_multi_output
 
 
 # =====================
+
+
+def pad_sequences(seqs, pad_idx, max_length):
+    seq_num, seq_len = seqs.size()
+    padding = torch.ones(seq_num, max_length - seq_len).to(cfg.device) * pad_idx
+    return torch.cat((seqs, padding), dim=1).long()
 
 
 def parse_args():
@@ -98,6 +102,13 @@ def parse_args():
         help="The number of returned sequences (the size of summary pool), if gen_method='true', 1",
     )
 
+    parser.add_argument(
+        "--num_return_seqs_per_trial",
+        type=int,
+        required=False,
+        help=f"The number of returned sequences per trial (Default: beam - num_return_seq, sampling - {cfg.num_return_seqs_per_trial})",
+    )
+
     # beam search method
     parser.add_argument(
         "--num_beams",  # now num_return_seqs = num_beams
@@ -114,6 +125,20 @@ def parse_args():
         help="Whether to ealy stop the beam search (default: True))",
     )
 
+    # sampling
+    parser.add_argument(
+        "--max_trial",
+        type=int,
+        required=False,
+        default=cfg.max_trial,
+        help=f"The number of max trial for sampling (default: {cfg.max_trial}",
+    )
+
+    # topk
+    parser.add_argument(
+        "--k", type=int, required=False, help="K for top-k sampling ",
+    )
+
     # topp
     parser.add_argument(
         "--seed",
@@ -124,7 +149,7 @@ def parse_args():
     )
 
     parser.add_argument(
-        "--prob", type=float, required=False, help="Probability for top-p sampling ",
+        "--p", type=float, required=False, help="Probability for top-p sampling ",
     )
 
     args = parser.parse_args()
@@ -139,8 +164,8 @@ def parse_args():
     elif args.gen_method == "topk" and (args.seed is None or args.k is None):
         parser.error("'topk' method requires --seed and --k")
 
-    elif args.gen_method == "topp" and (args.seed is None or args.prob is None):
-        parser.error("'topp' method requires --seed and --prob")
+    elif args.gen_method == "topp" and (args.seed is None or args.p is None):
+        parser.error("'topp' method requires --seed and --p")
 
     return args
 
@@ -150,7 +175,7 @@ if __name__ == "__main__":
 
     # set random seed
     if args.seed:
-        torch.random.seed = args.seed
+        torch.random.set_seed(args.seed)
 
     # load model and tokenizer
     model, tokenizer = load_summarization_model_and_tokenizer(args.model_name)
@@ -178,29 +203,30 @@ if __name__ == "__main__":
 
         exit()
 
-    # TODO
-    # model generate arguments
-    gen_args = {"num_return_sequences": args.num_return_seqs}
-
+    # sequence generate arguments
+    gen_args = {}
     if args.gen_method == "beam":
         # gen_seqs = generate_seqs_beam()
+        gen_args["num_return_sequences"] = args.num_return_seqs
         gen_args["do_sample"] = False
         gen_args["num_beams"] = args.num_beams
         gen_args["early_stopping"] = args.early_stopping
     elif args.gen_method == "topk":
-        # gen_seqs = generate_seqs_topk()
+        gen_args["num_return_sequences"] = args.num_return_seqs_per_trial
         gen_args["do_sample"] = True
         gen_args["top_k"] = args.k
+        # gen_args["temperature"] = 0.5 #args.temp
     elif args.gen_method == "topp":
-        # gen_seqs = generate_seqs_topp()
+        gen_args["num_return_sequences"] = args.num_return_seqs_per_trial
         gen_args["do_sample"] = True
-        gen_args["top_p"] = args.probs
+        gen_args["top_p"] = args.p
 
     # ======= generate summaries with beam search
     gen_seqs_list = []
     for i, data in enumerate(xsum_test_dataset):
+        # print(f"{i}-th sample processing")
         # print progress
-        if i % 1000 == 0:
+        if i % 100 == 0:
             print(f"{i} samples processed")
 
         original_doc = data["document"]
@@ -208,58 +234,55 @@ if __name__ == "__main__":
 
         # tokenize original document
         inputs = tokenizer(
-            original_doc,
-            # max_length=1024,  # default is 1024 for 'facebook/bart-large-xsum'
-            truncation=True,
-            return_tensors="pt",
-            padding=True,
+            original_doc, truncation=True, return_tensors="pt", padding=True,
         )
-        original_doc_token_ids = inputs.input_ids.to(device)
+        original_doc_token_ids = inputs.input_ids.to(cfg.device)
 
         # generate summaries
         gen_args["input_ids"] = original_doc_token_ids
-        gen_seqs = model.generate(**gen_args)
 
-        assert gen_seqs.size(0) == args.num_return_seqs
-        gen_seqs_list.append(gen_seqs.cpu())
+        # repeat generation until we get num_return_seqs unique seqs
+        final_gen_seqs = torch.empty((1, args.max_length))
+        trial_count = 0
+        while (
+            final_gen_seqs.size(0) < args.num_return_seqs
+            and trial_count <= args.max_trial
+        ):
+            # print("generate", final_gen_seqs.size(0))
+            gen_seqs = model.generate(**gen_args)
+            unique_gen_seqs = pad_sequences(
+                torch.unique(gen_seqs, dim=0),
+                pad_idx=tokenizer.pad_token_id,
+                max_length=args.max_length,
+            )
+            trial_count += 1
+            if trial_count == 1:
+                final_gen_seqs = unique_gen_seqs
+            else:
+                final_gen_seqs = torch.cat((final_gen_seqs, unique_gen_seqs), dim=0)
+                final_gen_seqs = torch.unique(final_gen_seqs, dim=0)
+                # breakpoint()
+
+        # save only num_return_seqs sequences
+        # final_gen_seqs = final_gen_seqs[:args.num_return_seqs, :]
+        # print("final", final_gen_seqs.size(0))
+        gen_seqs_list.append(final_gen_seqs.cpu())
 
     assert len(gen_seqs_list) == len(xsum_test_dataset)
 
     # save it to cache dir
-    # TODO: file naming rule
+    base_filename = f"gen_seqs_{args.gen_method}_{args.num_return_seqs}"
+    if args.gen_method == "topk":
+        filename = base_filename + f"_k{args.k}"
+    elif args.gen_method == "topp":
+        filename = base_filename + f"_p{args.p}"
+    elif args.gen_method == "beam":
+        filename = base_filename + f"_beam{args.num_beam}"
+    else:
+        assert False, "invalid generation method"
+    
     save_to_cache_dir(
         gen_seqs_list,
-        f"gen_seqs_{args.gen_method}_{args.num_return_seqs}",
+        filename,
         cfg.gen_seqs_dir,
     )
-
-    exit()
-
-    # TODO: handle duplicates
-    gen_count = 0
-    target_count = args.num_return_seqs
-    max_length = 100
-    sequences_dump = []
-
-    while gen_count < target_count:
-        sample_multi_output = model.generate(
-            original_doc_token_ids[None, :],
-            do_sample=True,
-            max_length=100,
-            top_p=0.92,
-            # top_k=30,
-            num_return_sequences=args.num_return_seqs,
-            return_dict_in_generate=True,
-            output_scores=True,
-        )
-        unique_output = torch.unique(sample_multi_output.sequences, dim=0)
-        print(unique_output.shape)
-        sequences_dump.append(unique_output)
-        gen_count += unique_output.shape[0]
-        print("gen_count", gen_count)
-
-    for dump in sequences_dump:
-        dump_seq_num, dump_max_length = dump.size()
-        dump_padding = torch.ones(dump_seq_num, max_length - dump_max_length).to(device)
-        dump_padded = torch.cat((dump, dump_padding), dim=1).long()
-    breakpoint()
