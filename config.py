@@ -6,7 +6,9 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 seed = 0
 
 # model
-model_name = "facebook/bart-large-xsum"
+# model_name = "facebook/bart-large-xsum"
+# distilbart
+model_name = "sshleifer/distilbart-xsum-12-6"
 
 # file path
 base_cache_dir = "/home/wk247/workspace/xsum_analysis/cache"
