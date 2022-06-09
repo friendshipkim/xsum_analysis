@@ -2,8 +2,8 @@
 source /home/wk247/.bashrc
 eval "$(command conda 'shell.bash' 'hook' 2> /dev/null)"
 
-GEN_METHOD="beam"
-NUM_SEQS=30
+GEN_METHOD="true"
+NUM_SEQS=1
 
 PTB_METHOD="ner"
 

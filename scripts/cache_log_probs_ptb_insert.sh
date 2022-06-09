@@ -6,8 +6,8 @@ GEN_METHOD="beam"
 NUM_SEQS=30
 
 PTB_METHOD="insert"
-NUM_INSERT="1"
-INSERT_POSITION="top1"
+NUM_INSERT="2"
+INSERT_POSITION="top2"
 
 conda activate xsum_analysis
 python /home/wk247/workspace/xsum_analysis/calculate_log_probs_ptb.py \
