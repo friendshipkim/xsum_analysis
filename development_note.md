@@ -63,14 +63,16 @@
 * **beam-search decoding** by calling `beam_search()` if `num_beams>1` and `do_sample=False`.
   * example
   ``` bash
-  python generate_summary.py --gen_method beam --num_return_seqs 40 --num_beams 40 
+  python generate_summary.py --gen_method beam --num_return_seqs 30 --num_beams 30 
   ```
 * **beam-search multinomial sampling** by calling `beam_sample()` if `num_beams>1` and `do_sample=True`.
 * **diverse beam-search decoding** by calling `group_beam_search()`, if `num_beams>1` and `num_beam_groups>1`.
 * **constrained beam-search decoding** by calling `constrained_beam_search()`, if `constraints!=None` or `force_words_ids!=None`.
 
-
-* python generate_summary.py --num_return_seqs 20 --gen_method topk --k 20 
+* top-k sampling
+```bash
+python generate_summary.py --num_return_seqs 20 --gen_method topk --k 20 
+```
 
 ## Calculate log probabilities
 1. Original documents
