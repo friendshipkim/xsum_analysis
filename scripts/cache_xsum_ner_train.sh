@@ -1,5 +1,5 @@
 #!/bin/bash
-source /home/wk247/.bashrc
+source ~/.bashrc
 eval "$(command conda 'shell.bash' 'hook' 2> /dev/null)"
 
 conda activate xsum_analysis
