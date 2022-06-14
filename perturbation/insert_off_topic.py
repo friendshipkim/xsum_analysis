@@ -79,7 +79,7 @@ def parse_args():
 
     # arguments for insertion perturbation
     parser.add_argument(
-        "--num_insert",
+        "--insert_num",
         type=int,
         required=True,
         choices=cfg.insert_num_options,
@@ -96,13 +96,13 @@ def parse_args():
     args = parser.parse_args()
 
     # arguments sanity check
-    if args.num_insert == 1 and (args.insert_position not in cfg.insert_1_options):
+    if args.insert_num == 1 and (args.insert_position not in cfg.insert_1_options):
         parser.error(
-            f"if --num_insert == 1, --insert_position should be one of {cfg.insert_1_options}"
+            f"if --insert_num == 1, --insert_position should be one of {cfg.insert_1_options}"
         )
-    elif args.num_insert == 2 and (args.insert_position not in cfg.insert_2_options):
+    elif args.insert_num == 2 and (args.insert_position not in cfg.insert_2_options):
         parser.error(
-            f"if --num_insert == 2, --insert_position should be one of {cfg.insert_2_options}"
+            f"if --insert_num == 2, --insert_position should be one of {cfg.insert_2_options}"
         )
 
     return args
@@ -135,7 +135,7 @@ if __name__ == "__main__":
 
         # extract n sentences from the ptb_doc
         ptb_sents = ptb_doc.split("\n")
-        ptb_insert_indices = ptb_random_select_order[: args.num_insert]
+        ptb_insert_indices = ptb_random_select_order[: args.insert_num]
         ptb_insert_sents = [ptb_sents[i] for i in ptb_insert_indices]
 
         # original doc sentences
@@ -148,13 +148,13 @@ if __name__ == "__main__":
                 range(len(original_sents)), k=args.sample_sents_n
             )
         elif args.insert_position == "top1":
-            assert args.num_insert == 1
+            assert args.insert_num == 1
             insert_indices = [0]
         elif args.insert_position == "topbottom":
-            assert args.num_insert == 2
+            assert args.insert_num == 2
             insert_indices = [0, -1]
         elif args.insert_position == "top2":
-            assert args.num_insert == 2
+            assert args.insert_num == 2
             insert_indices = [0, 1]
         else:
             print(f"{args.insert_position} is not supported")
@@ -171,9 +171,9 @@ if __name__ == "__main__":
             original_sents.insert(insert_idx, ptb_sent)
 
         # check error
-        if len(original_sents) != metadata_dict["original_doc_len"] + args.num_insert:
+        if len(original_sents) != metadata_dict["original_doc_len"] + args.insert_num:
             print(
-                len(original_sents), metadata_dict["original_doc_len"] + args.num_insert
+                len(original_sents), metadata_dict["original_doc_len"] + args.insert_num
             )
             breakpoint()
 
@@ -185,5 +185,5 @@ if __name__ == "__main__":
 
     # save ptb_list to cache dir
     save_to_cache_dir(
-        ptb_list, f"ptb_list_{args.num_insert}_{args.insert_position}", ptb_docs_save_dir
+        ptb_list, f"ptb_list_{args.insert_num}_{args.insert_position}", ptb_docs_save_dir
     )
