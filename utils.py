@@ -1,9 +1,11 @@
 import pickle
 import os
 import torch
+import logging
+import argparse
 import numpy as np
 from torch import nn, Tensor
-from typing import List
+from typing import List, Type
 
 import config as cfg
 
@@ -37,22 +39,50 @@ def calculate_log_probs(logits: Tensor, labels: Tensor) -> Tensor:
 
 
 # ========= caching utils
-def save_to_cache_dir(var: object, file_name: str, cache_dir: str) -> None:
+def save_to_cache_dir(
+    var: object, file_name: str, cache_dir: str, logger: Type[logging.Logger]
+) -> None:
+    # if the directory doesn't exist, create it
+    if not os.path.exists(cache_dir):
+        os.makedirs(cache_dir)
+        logger.info(f">> Directory '{cache_dir}' created")
+
     file_path = os.path.join(cache_dir, file_name + ".pkl")
-    with open(file_path, "wb") as f:
-        pickle.dump(var, f, protocol=pickle.HIGHEST_PROTOCOL)
-    print(f"saved to '{file_path}'")
+
+    # check if the file already exists
+    if os.path.exists(file_path):
+        overwrite_flag = input(f"File '{file_path}' already exists, overwrite? [y/n]: ")
+        if overwrite_flag == "y":
+            with open(file_path, "wb") as f:
+                pickle.dump(var, f, protocol=pickle.HIGHEST_PROTOCOL)
+            logger.info(f">> File '{file_path}' overwritten")
+        elif overwrite_flag:
+            logger.critical(f">> Do not overwrite, exit")
+            exit()
+    else:
+        with open(file_path, "wb") as f:
+            pickle.dump(var, f, protocol=pickle.HIGHEST_PROTOCOL)
+        logger.info(f">> File saved to '{file_path}'")
 
 
-def load_from_cache_dir(file_name: str, cache_dir: str) -> object:
+def load_from_cache_dir(
+    file_name: str, cache_dir: str, logger: Type[logging.Logger]
+) -> object:
     file_path = os.path.join(cache_dir, file_name + ".pkl")
-    with open(file_path, "rb") as f:
-        var = pickle.load(f)
-    print(f"'{file_path}' loaded")
-    return var
+
+    # check if file_path exists
+    if os.path.exists(file_path):
+        with open(file_path, "rb") as f:
+            var = pickle.load(f)
+        logger.info(f">> File loaded from '{file_path}'")
+        return var
+    else:
+        logger.critical(f">> File doesn't exist '{file_path}', exit")
+        exit()
+
 
 # ========= KL divergence utils
-def calculate_KL(p_s: List, q_s: List, est_type: str="basic") -> np.array:
+def calculate_KL(p_s: List, q_s: List, est_type: str = "basic") -> np.array:
     """
     given two lists of log prob tensors, return an array of KL-divergences
     Args:
@@ -65,10 +95,10 @@ def calculate_KL(p_s: List, q_s: List, est_type: str="basic") -> np.array:
     assert len(p_s) == len(q_s)
     kl_list = []
     for p, q in zip(p_s, q_s):
-        if len(q) == 0:  # for ner - skipping this sample
+        if len(q) == 0:  # for ner - skip this sample
             kl_list.append(np.nan)
             continue
-        
+
         assert p.size(0) == q.size(0)
         num_y = p.size(0)
 
@@ -77,6 +107,65 @@ def calculate_KL(p_s: List, q_s: List, est_type: str="basic") -> np.array:
         else:  # TODO: implement other kl estimators
             pass
     return np.array(kl_list)
+
+
+# ========= filename utils
+def make_gen_seqs_filename(args: Type[argparse.Namespace]) -> str:
+    """
+    given arguments, return the filename of generated sequences list
+    Args:
+        args (argparse.Namespace): argument namespace
+    Returns:
+        a filename
+    """
+    base_filename = f"gen_seqs_{args.gen_method}_{args.num_return_seqs}"
+    if args.gen_method == "topk":
+        filename = base_filename + f"_k{args.k}"
+    elif args.gen_method == "topp":
+        filename = base_filename + f"_p{args.p}"
+    elif args.gen_method == "beam":
+        filename = base_filename + f"_beam{args.num_beams}"
+    elif args.gen_method == "true":
+        filename = base_filename
+    else:
+        assert False, f"{args.gen_method} is invalid"
+    return filename
+
+
+def make_ptb_docs_filename(args: Type[argparse.Namespace]) -> str:
+    """
+    given arguments, return the filename of perturbed documents
+    Args:
+        args (argparse.Namespace): argument namespace
+    Returns:
+        a filename
+    """
+    if args.ptb_method == "ner":
+        filename = f"ptb_docs_list_{args.ner_tagger}"
+    elif args.ptb_method == "insert":
+        filename = f"ptb_docs_list_{args.insert_num}_{args.insert_position}"
+    return filename
+
+
+def make_log_probs_filename(is_original: bool, args: Type[argparse.Namespace]) -> str:
+    """
+    given arguments, return the filename of perturbed documents
+    Args:
+        is_original (bool): if given document is original (true) or perturbed (false)
+        args (argparse.Namespace): argument namespace
+    Returns:
+        a filename
+    """
+    # original doc
+    if is_original:
+        return "original_log_probs_list"
+
+    # ptb docs
+    if args.ptb_method == "ner":
+        filename = f"ptb_log_probs_list_ner_{args.ner_tagger}"
+    elif args.ptb_method == "insert":
+        filename = f"ptb_log_probs_list_{args.ptb_method}_{args.insert_num}_{args.insert_position}"
+    return filename
 
 
 # ========= summary scoring utils
