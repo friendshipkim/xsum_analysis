@@ -6,60 +6,35 @@ from xsum_dataset import XsumDataset
 
 import config as cfg
 from generate_xsum_summary import load_summarization_model_and_tokenizer
-from utils import save_to_cache_dir
+from utils import save_to_cache_dir, make_gen_seqs_filename
 
 import torch
 
 
-# # ========== default parameters ==========
-# model_name = "facebook/bart-large-xsum"
-# gen_seqs_dir = "/home/wk247/workspace/xsum_analysis/cache/gen_seqs"
-# max_summary_length = 150
+def log_arguments(args, logger):
+    logger.info(">> Generating sequences")
+    logger.info(f"gen_method: {args.gen_method}")
+    logger.info(f"num_return_seqs: {args.num_return_seqs}")
+    logger.info(f"max_length: {args.max_length}")
 
-# summary_generation_methods = ["true", "beam", "topp", "topk"]
-# seed = 0
-# # ========================================
-
-
-# not used for now
-# ========== generate methods
-def generate_seqs_beam():
-    beam_mult_output = model.generate(
-        input_ids=original_doc_token_ids,
-        num_beams=args.num_beams,
-        num_return_sequences=args.num_beams,
-        max_length=args.max_length,
-        early_stopping=args.early_stopping,
-        # return_dict_in_generate=True,
-        # output_scores=True,
-    )
-    return beam_mult_output
-
-
-def generate_seqs_topk():
-    topk_multi_output = model.generate(
-        input_ids=original_doc_token_ids,
-        do_sample=True,
-        max_length=args.max_length,
-        top_k=args.k,
-        num_return_sequences=args.num_return_seqs,
-    )
-    return topk_multi_output
-
-
-def generate_seqs_topp():
-    topp_multi_output = model.generate(
-        input_ids=original_doc_token_ids,
-        do_sample=True,
-        max_length=args.max_length,
-        top_k=0,
-        top_p=args.p,
-        num_return_sequences=args.num_return_seqs,
-    )
-    return topp_multi_output
-
-
-# =====================
+    if args.gen_method == "true":
+        pass
+    elif args.gen_method == "beam":
+        logger.info(f"num_beams: {args.num_beams}")
+        logger.info(f"early_stopping: {args.early_stopping}")
+        logger.info(
+            f"num_return_seqs_per_trial: {args.num_beams}"
+        )  # same with num_beams
+    elif args.gen_method == "topk":
+        logger.info(f"seed: {args.seed}")
+        logger.info(f"k: {args.k}")
+        logger.info(f"num_return_seqs_per_trial: {args.num_return_seqs_per_trial}")
+    elif args.gen_method == "topp":
+        logger.info(f"seed: {args.seed}")
+        logger.info(f"p: {args.p}")
+        logger.info(f"num_return_seqs_per_trial: {args.num_return_seqs_per_trial}")
+    else:
+        assert False, f"{args.gen_method} is invalid"
 
 
 def pad_sequences(seqs, pad_idx, max_length):
@@ -106,15 +81,13 @@ def parse_args():
         "--num_return_seqs_per_trial",
         type=int,
         required=False,
+        default=cfg.num_return_seqs_per_trial,
         help=f"The number of returned sequences per trial (Default: beam - num_return_seq, sampling - {cfg.num_return_seqs_per_trial})",
     )
 
-    # beam search method
+    # beam search
     parser.add_argument(
-        "--num_beams",  # now num_return_seqs = num_beams
-        type=int,
-        required=False,
-        help="Beam size",
+        "--num_beams", type=int, required=False, help="Beam size",
     )
 
     parser.add_argument(
@@ -134,12 +107,6 @@ def parse_args():
         help=f"The number of max trial for sampling (default: {cfg.max_trial}",
     )
 
-    # topk
-    parser.add_argument(
-        "--k", type=int, required=False, help="K for top-k sampling ",
-    )
-
-    # topp
     parser.add_argument(
         "--seed",
         type=int,
@@ -148,6 +115,12 @@ def parse_args():
         help=f"Torch random seed (default: {cfg.seed})",
     )
 
+    # topk
+    parser.add_argument(
+        "--k", type=int, required=False, help="K for top-k sampling ",
+    )
+
+    # topp
     parser.add_argument(
         "--p", type=float, required=False, help="Probability for top-p sampling ",
     )
@@ -172,6 +145,10 @@ def parse_args():
 
 if __name__ == "__main__":
     args = parse_args()
+
+    # logging
+    logger = cfg.gen_seqs_logger
+    log_arguments(args, logger)
 
     # set random seed
     if args.seed:
@@ -199,6 +176,7 @@ if __name__ == "__main__":
             true_sequence_list,
             f"gen_seqs_{args.gen_method}_{args.num_return_seqs}",
             cfg.gen_seqs_dir,
+            logger,
         )
 
         exit()
@@ -206,7 +184,6 @@ if __name__ == "__main__":
     # sequence generate arguments
     gen_args = {}
     if args.gen_method == "beam":
-        # gen_seqs = generate_seqs_beam()
         gen_args["num_return_sequences"] = args.num_return_seqs
         gen_args["do_sample"] = False
         gen_args["num_beams"] = args.num_beams
@@ -215,7 +192,7 @@ if __name__ == "__main__":
         gen_args["num_return_sequences"] = args.num_return_seqs_per_trial
         gen_args["do_sample"] = True
         gen_args["top_k"] = args.k
-        # gen_args["temperature"] = 0.5 #args.temp
+        # gen_args["temperature"] = 0.5  # TBD
     elif args.gen_method == "topp":
         gen_args["num_return_sequences"] = args.num_return_seqs_per_trial
         gen_args["do_sample"] = True
@@ -223,11 +200,10 @@ if __name__ == "__main__":
 
     # ======= generate summaries with beam search
     gen_seqs_list = []
-    for i, data in enumerate(xsum_test_dataset):
-        # print(f"{i}-th sample processing")
-        # print progress
-        if i % 100 == 0:
-            print(f"{i} samples processed")
+    for i, data in enumerate(tqdm(xsum_test_dataset)):
+        # log progress
+        if i % cfg.log_interval == 0:
+            logger.info(f"{i} samples processed")
 
         original_doc = data["document"]
         # true_summary = data["true_summary"]
@@ -271,18 +247,6 @@ if __name__ == "__main__":
     assert len(gen_seqs_list) == len(xsum_test_dataset)
 
     # save it to cache dir
-    base_filename = f"gen_seqs_{args.gen_method}_{args.num_return_seqs}"
-    if args.gen_method == "topk":
-        filename = base_filename + f"_k{args.k}"
-    elif args.gen_method == "topp":
-        filename = base_filename + f"_p{args.p}"
-    elif args.gen_method == "beam":
-        filename = base_filename + f"_beam{args.num_beam}"
-    else:
-        assert False, "invalid generation method"
-    
     save_to_cache_dir(
-        gen_seqs_list,
-        filename,
-        cfg.gen_seqs_dir,
+        gen_seqs_list, make_gen_seqs_filename(args), cfg.gen_seqs_dir, logger,
     )

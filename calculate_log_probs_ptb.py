@@ -6,29 +6,23 @@ This can be merged if log probs can be calculated while generating sequences
 
 import argparse
 from os.path import join
-from tqdm import tqdm
+from tqdm.contrib import tzip
 from typing import List
 
+import torch
 import datasets
 from xsum_dataset import XsumDataset
 
 import config as cfg
 from generate_xsum_summary import load_summarization_model_and_tokenizer
-from utils import calculate_log_probs, load_from_cache_dir, save_to_cache_dir
-
-import torch
-
-
-# # ========== default parameters ==========
-# model_name = "facebook/bart-large-xsum"
-
-# ptb_docs_dir = "/home/wk247/workspace/xsum_analysis/cache/ptb_docs"
-# gen_seqs_dir = "/home/wk247/workspace/xsum_analysis/cache/gen_seqs"
-# log_probs_dir = "/home/wk247/workspace/xsum_analysis/cache/log_probs"
-
-# summary_generation_methods = ["beam", "topp", "topk", "true"]
-# document_ptb_methods = ["insert", "ner"]
-# # ========================================
+from utils import (
+    calculate_log_probs,
+    load_from_cache_dir,
+    save_to_cache_dir,
+    make_gen_seqs_filename,
+    make_ptb_docs_filename,
+    make_log_probs_filename,
+)
 
 # decode multiple sequences
 def decode_mult_seqs(
@@ -36,14 +30,39 @@ def decode_mult_seqs(
 ) -> List[str]:
     return tokenizer.batch_decode(
         seq_tokens,
-        skip_special_tokens=skip_special_tokens, 
-        clean_up_tokenization_spaces=False)
-    # return [
-    #     tokenizer.decode(
-    #         seq, skip_special_tokens=skip_special_tokens, clean_up_tokenization_spaces=False
-    #     )
-    #     for seq in seq_tokens
-    # ]
+        skip_special_tokens=skip_special_tokens,
+        clean_up_tokenization_spaces=False,
+    )
+
+
+def log_arguments(args, logger):
+    logger.info(">> Calculating log probabilities of perturbed documents")
+    logger.info(">> Summary generation parameters:")
+    logger.info(f"gen_method: {args.gen_method}")
+    logger.info(f"num_return_seqs: {args.num_return_seqs}")
+
+    # gen seqs
+    if args.gen_method == "true":
+        pass
+    elif args.gen_method == "beam":
+        logger.info(f"num_beams: {args.num_beams}")
+    elif args.gen_method == "topk":
+        logger.info(f"k: {args.k}")
+    elif args.gen_method == "topp":
+        logger.info(f"p: {args.p}")
+    else:
+        assert False, f"{args.gen_method} is invalid"
+
+    # ptb
+    logger.info(">> Document perturbation parameters:")
+    logger.info(f"ptb_method: {args.ptb_method}")
+    if args.ptb_method == "insert":
+        logger.info(f"insert_num: {args.insert_num}")
+        logger.info(f"insert_position: {args.insert_position}")
+    elif args.ptb_method == "ner":
+        logger.info(f"ner_tagger: {args.ner_tagger}")
+    else:
+        assert False, f"{args.ptb_method} is invalid"
 
 
 def parse_args():
@@ -68,9 +87,29 @@ def parse_args():
     )
 
     parser.add_argument(
-        "--num_seqs", type=int, required=True, help="The number of generated summaries",
+        "--num_return_seqs",
+        type=int,
+        required=True,
+        help="Number of generated summaries, if gen_method=='true', should be 1",
     )
 
+    # arguments for generated sequences
+    # beam search
+    parser.add_argument(
+        "--num_beams", type=int, required=False, help="Beam size",
+    )
+
+    # topk
+    parser.add_argument(
+        "--k", type=int, required=False, help="K for top-k sampling ",
+    )
+
+    # topp
+    parser.add_argument(
+        "--p", type=float, required=False, help="Probability for top-p sampling ",
+    )
+
+    # arguments for perturbation
     parser.add_argument(
         "--ptb_method",
         type=str,
@@ -81,7 +120,7 @@ def parse_args():
 
     # arguments for insertion perturbation
     parser.add_argument(
-        "--num_insert",
+        "--insert_num",
         type=str,
         required=False,
         help="The number of inserted sentences",
@@ -105,16 +144,21 @@ def parse_args():
 
     args = parser.parse_args()
 
+    # argument sanity check
     if args.ptb_method == "insert" and (
-        args.num_insert is None or args.insert_position is None
+        args.insert_num is None or args.insert_position is None
     ):
-        parser.error("'insert' method requires --num_insert and --insert_position")
+        parser.error("'insert' method requires --insert_num and --insert_position")
 
     return args
 
 
 if __name__ == "__main__":
     args = parse_args()
+
+    # logging
+    logger = cfg.log_probs_logger
+    log_arguments(args, logger)
 
     # load model and tokenizer
     model, tokenizer = load_summarization_model_and_tokenizer(args.model_name)
@@ -124,27 +168,22 @@ if __name__ == "__main__":
     xsum_test_dataset = XsumDataset(xsum_data_raw["test"]).dataset
 
     # load sequences list
-    gen_seqs_list = load_from_cache_dir(
-        f"gen_seqs_{args.gen_method}_{args.num_seqs}", cfg.gen_seqs_dir
-    )
+    gen_seqs_filename = make_gen_seqs_filename(args)
+    gen_seqs_list = load_from_cache_dir(gen_seqs_filename, cfg.gen_seqs_dir, logger)
 
     # load perturbed documents list
-    if args.ptb_method == "ner":
-        ptb_docs_filename = f"ptb_docs_list_{args.ner_tagger}"
-    elif args.ptb_method == "insert":
-        ptb_docs_filename = f"ptb_docs_list_{args.num_insert}_{args.insert_position}"
-
     ptb_docs_list = load_from_cache_dir(
-        ptb_docs_filename, join(cfg.ptb_docs_dir, args.ptb_method)
+        make_ptb_docs_filename(args), join(cfg.ptb_docs_dir, args.ptb_method), logger
     )
 
     assert len(gen_seqs_list) == len(ptb_docs_list)
 
     # ======= calaulate log probs of each sequences
     ptb_log_probs_list = []
-    for ptb_doc_dict, gen_seqs in tqdm(
-        zip(ptb_docs_list, gen_seqs_list), total=len(gen_seqs_list)
-    ):
+    for i, (ptb_doc_dict, gen_seqs) in enumerate(tzip(ptb_docs_list, gen_seqs_list)):
+        # log progress
+        if i % cfg.log_interval == 0:
+            logger.info(f"{i} samples processed")
 
         # if ptb_doc_dict is empty, append empty tensor and continue
         if len(ptb_doc_dict) == 0:
@@ -166,11 +205,7 @@ if __name__ == "__main__":
 
             # re-encode generated summaries
             ptb_inputs = tokenizer(
-                ptb_gen_seqs_text,
-                # max_length=1024,  # default is 1024 for 'facebook/bart-large-xsum'
-                truncation=True,
-                return_tensors="pt",
-                padding=True,
+                ptb_gen_seqs_text, truncation=True, return_tensors="pt", padding=True,
             )
             gen_seqs = ptb_inputs.input_ids
 
@@ -178,42 +213,38 @@ if __name__ == "__main__":
             ptb_doc = ptb_doc_dict["ptb_doc"]
 
         # tokenize ptb document
-        inputs = tokenizer(
-            ptb_doc,
-            truncation=True,
-            return_tensors="pt",
-            padding=True,
-        )
+        inputs = tokenizer(ptb_doc, truncation=True, return_tensors="pt", padding=True,)
         ptb_doc_token_ids = inputs.input_ids.to(cfg.device)
 
         # process generated sequences to use them as labels
         gen_seqs_clean = gen_seqs[:, 1:]  # remove <sos> token to make labels
         gen_labels = gen_seqs_clean.masked_fill(
             gen_seqs_clean == tokenizer.pad_token_id, cfg.mask_idx
-        ).to(cfg.device)  # pad with -100
+        ).to(
+            cfg.device
+        )  # pad with -100
 
         # feed the document to the model to get log probs
         with torch.no_grad():
             ptb_model_output = model(
-                input_ids=ptb_doc_token_ids.repeat(args.num_seqs, 1), labels=gen_labels,
+                input_ids=ptb_doc_token_ids.repeat(gen_labels.size(0), 1),
+                labels=gen_labels,
             )
         ptb_log_probs = calculate_log_probs(ptb_model_output.logits, gen_labels).cpu()
 
         # append to list
-        assert args.num_seqs == ptb_log_probs.size(0)
+        # num_return_seqs may vary
+        # assert args.num_return_seqs == ptb_log_probs.size(0)
         ptb_log_probs_list.append(ptb_log_probs)
 
     assert len(ptb_log_probs_list) == len(xsum_test_dataset)
 
     # ======== save it to log probs dir
     # directory differs from generation methods and the number of summaries
-    save_dir = join(cfg.log_probs_dir, f"{args.gen_method}_{args.num_seqs}")
-
-    if args.ptb_method == "ner":
-        ptb_log_probs_filename = (
-            f"ptb_log_probs_list_ner_{args.ner_tagger}"
-        )
-    elif args.ptb_method == "insert":
-        ptb_log_probs_filename = f"ptb_log_probs_list_{args.ptb_method}_{args.num_insert}_{args.insert_position}"
-
-    save_to_cache_dir(ptb_log_probs_list, ptb_log_probs_filename, save_dir)
+    save_dir = gen_seqs_filename.replace("gen_seqs_", "")
+    save_to_cache_dir(
+        ptb_log_probs_list,
+        make_log_probs_filename(is_original=False, args=args),
+        join(cfg.log_probs_dir, save_dir),
+        logger,
+    )
