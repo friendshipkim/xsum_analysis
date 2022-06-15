@@ -1,5 +1,6 @@
 # ignore cache dirs
 cache*/
+log/
 data/
 fairseq/
 notebooks/vis/
