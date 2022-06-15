@@ -16,7 +16,7 @@ help() {
     exit 0
 }
 
-model_name="bart-large-xsum"
+model_name="facebook/bart-large-xsum"
 gen_method="true"
 num_return_seqs=30
 num_beams=30
