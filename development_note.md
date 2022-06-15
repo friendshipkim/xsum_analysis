@@ -1,6 +1,6 @@
 # Development note
 
-## Create perturbed documents
+## 1. Create perturbed documents
 1. insert
    * currently available options
      * insert_num_options = [1, 2]
@@ -20,7 +20,7 @@
         python perturbation/insert_off_topic.py --insert_num 1 --insert_position top1
         ```
 
-## Cached data structure
+### Data structure of cached perturbed documents
 * Data structure of ptb_random_metadata
 ``` python
 {"ptb_id": str: xsum val bbcid used to sample off-topic sentences
@@ -52,7 +52,7 @@
      }}
     ```
 
-## Summary generation methods
+## 2. Generated summaries
 ```bash
 bash ./scripts/cache_summary.sh -m facebook/bart-large-xsum -g topk -n 40 -k 100
 ```
@@ -62,6 +62,7 @@ bash ./scripts/cache_summary.sh -m facebook/bart-large-xsum -g topk -n 40 -k 100
   python generate_summary.py --gen_method true --num_return_seqs 1
   ```
 * **greedy decoding** by calling `greedy_search()` if `num_beams=1` and `do_sample=False`.
+  * TODO
 * **multinomial sampling** by calling `sample()` if `num_beams=1` and `do_sample=True`.
   * top-k sampling
   ```bash
@@ -77,12 +78,13 @@ bash ./scripts/cache_summary.sh -m facebook/bart-large-xsum -g topk -n 40 -k 100
   python generate_summary.py --gen_method beam --num_return_seqs 30 --num_beams 30 
   ```
 * **beam-search multinomial sampling** by calling `beam_sample()` if `num_beams>1` and `do_sample=True`.
+  * TODO
 * **diverse beam-search decoding** by calling `group_beam_search()`, if `num_beams>1` and `num_beam_groups>1`.
+  * TODO
 * **constrained beam-search decoding** by calling `constrained_beam_search()`, if `constraints!=None` or `force_words_ids!=None`.
+  * TODO
 
-
-
-## Calculate log probabilities
+## 3. Calculate log probabilities
 ```bash
 # pass the arguments
 bash ./scripts/cache_log_probs.sh -m facebook/bart-large-xsum -g topk -n 40 -k 100
@@ -100,14 +102,12 @@ bash ./scripts/cache_log_probs_sep.sh
 
 2. Perturbed documents
   * change arguments for different generation methods and number of sequences
-  
-  * For each ptb method
-    * Insert
-    ```bash
-    python calculate_log_probs_ptb.py --gen_method beam --num_return_seqs 30 --num_beams 30 --ptb_method insert --insert_num 1 --insert_position top1
-    ```
-    * NER
-    ```bash
-    python calculate_log_probs_ptb.py --gen_method beam --num_return_seqs 30 --num_beams 30 --ptb_method ner
-    ```
-    * change arguments for different perturbation methods
+  * Insert
+  ```bash
+  python calculate_log_probs_ptb.py --gen_method beam --num_return_seqs 30 --num_beams 30 --ptb_method insert --insert_num 1 --insert_position top1
+  ```
+  * NER
+  ```bash
+  python calculate_log_probs_ptb.py --gen_method beam --num_return_seqs 30 --num_beams 30 --ptb_method ner
+  ```
+  * change arguments for different perturbation methods
