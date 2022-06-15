@@ -6,7 +6,7 @@ from os.path import join, expanduser
 # logging
 # make log filename
 log_dir = expanduser("~/workspace/xsum_analysis/log")
-if len(os.listdir) > 0:
+if len(os.listdir(log_dir)) > 0:
     exist_log_indices = [int(n.split("_")[-1].replace(".log", "")) for n in os.listdir(log_dir)]
     exist_log_indices.sort()
     current_log_index = exist_log_indices[-1] + 1
