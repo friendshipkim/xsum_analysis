@@ -4,8 +4,16 @@ import os
 from os.path import join, expanduser
 
 # logging
-log_dir = "./log"
-log_filename = f"job_{len(os.listdir(log_dir)) + 1}"
+# make log filename
+log_dir = expanduser("~/workspace/xsum_analysis/log")
+if len(os.listdir) > 0:
+    exist_log_indices = [int(n.split("_")[-1].replace(".log", "")) for n in os.listdir(log_dir)]
+    exist_log_indices.sort()
+    current_log_index = exist_log_indices[-1] + 1
+else:
+    current_log_index = 0
+    
+log_filename = f"job_{current_log_index}.log"
 handlers = [logging.FileHandler(join(log_dir, log_filename)), logging.StreamHandler()]
 logging.basicConfig(
     level=logging.INFO,
