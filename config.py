@@ -1,9 +1,12 @@
 import torch
 import logging
+import os
 from os.path import join, expanduser
 
 # logging
-handlers = [logging.FileHandler("filename.log"), logging.StreamHandler()]
+log_dir = "./log"
+log_filename = f"job_{len(os.listdir(log_dir)) + 1}"
+handlers = [logging.FileHandler(join(log_dir, log_filename)), logging.StreamHandler()]
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s %(name)-12s %(levelname)-8s %(message)s",
@@ -24,7 +27,7 @@ if torch.cuda.is_available():
         logging.info(f">> Running on cuda:{empty_gpu_ids[0]}")
     else:
         device = torch.device("cpu")
-    logging.info(f">> Running on cpu")
+        logging.info(f">> Running on cpu")
 else:
     device = torch.device("cpu")
     logging.info(f">> Running on cpu")
@@ -33,13 +36,13 @@ else:
 seed = 0
 
 # model
-# model_name = "facebook/bart-large-xsum"
-model_name = "sshleifer/distilbart-xsum-12-6"
+model_names = ["facebook/bart-large-xsum", "sshleifer/distilbart-xsum-12-6"]
+model_name = os.environ["model_name"] #model_names[0] # TODO
 model_dir = model_name.split("/")[-1]
 logging.info(f">> Model: {model_name}")
 
 # file path
-base_cache_dir = expanduser("~/workspace/xsum_analysis/cache_tmp")
+base_cache_dir = expanduser("~/workspace/xsum_analysis/cache")
 ptb_docs_dir = join(base_cache_dir, "ptb_docs")
 gen_seqs_dir = join(base_cache_dir, "gen_seqs", model_dir)
 log_probs_dir = join(base_cache_dir, "log_probs", model_dir)

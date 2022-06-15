@@ -51,7 +51,7 @@ def parse_args():
         type=str,
         required=False,
         default=cfg.model_name,
-        help=f"Summarization model to test (Default: {cfg.model_name})",
+        help=f"Summarization model to test (Default: '{cfg.model_names[0]}')",
     )
 
     parser.add_argument(
