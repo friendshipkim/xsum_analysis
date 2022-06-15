@@ -52,7 +52,7 @@
      }}
     ```
 
-## 2. Generated summaries
+## 2. Generate summaries
 ```bash
 bash ./scripts/cache_summary.sh -m facebook/bart-large-xsum -g topk -n 40 -k 100
 ```
